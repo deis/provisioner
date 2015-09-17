@@ -10,25 +10,43 @@ function which-os {
   fi
 }
 
-function guess-ipaddr {
-  if [ $(which-os) == "darwin" ]; then
-    ifconfig vboxnet2 | grep 'inet ' | awk '{print $2}'
-  else
-    ifconfig en0 | grep 'inet ' | awk '{print $2}'
+function guess-docker-ipaddr {
+  if [ -n "${HOST_IPADDR:-}" ]; then
+    echo ${HOST_IPADDR}
+    return 0
   fi
+
+  case $(which-os) in
+    darwin)
+      boot2docker config | grep "HostIP" | cut -d = -f 2 | xargs
+      ;;
+    linux)
+      ifconfig docker0 | grep 'inet ' | awk '{print $2}' | sed 's/addr://'
+      ;;
+  esac
+}
+
+function guess-registry-ipaddr {
+  if [ -n "${HOST_IPADDR:-}" ]; then
+    echo ${HOST_IPADDR}
+    return 0
+  fi
+
+  case $(which-os) in
+    darwin)
+      if command -v boot2docker &> /dev/null; then
+        # xargs trims leading/trailing whitespace
+        boot2docker config | grep "LowerIP" | cut -d = -f 2 | xargs
+      else
+        rerun_die "Could not determine registry ip address."
+      fi
+      ;;
+    linux)
+      ifconfig eth0 | grep 'inet ' | awk '{print $2}' | sed 's/addr://'
+      ;;
+  esac
 }
 
 function guess-registry {
-  local ip
-
-  if [ $(which-os) == "darwin" ]; then
-    if which boot2docker &> /dev/null; then
-      # xargs trims leading/trailing whitespace
-      ip="$(boot2docker config | grep "LowerIP" | cut -d = -f 2 | xargs)"
-    fi
-  else
-    ip="$(guess-ipaddr)"
-  fi
-
-  echo "${ip}:5000"
+  echo "$(guess-registry-ipaddr):5000"
 }
